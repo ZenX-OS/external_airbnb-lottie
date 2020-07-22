@@ -15,6 +15,9 @@ import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
+import android.content.BroadcastReceiver;
+import android.content.Intent;
+import android.content.IntentFilter;
 
 import androidx.annotation.DrawableRes;
 import androidx.annotation.FloatRange;
@@ -102,6 +105,7 @@ import static com.airbnb.lottie.RenderMode.HARDWARE;
   private boolean wasAnimatingWhenDetached = false;
   private boolean autoPlay = false;
   private boolean cacheComposition = true;
+  private boolean mScreenOn = false;
   private RenderMode renderMode = RenderMode.AUTOMATIC;
   private Set<LottieOnCompositionLoadedListener> lottieOnCompositionLoadedListeners = new HashSet<>();
   /**
@@ -302,13 +306,13 @@ import static com.airbnb.lottie.RenderMode.HARDWARE;
     if (!isInitialized) {
       return;
     }
-    if (isShown()) {
+    if (isShown() && mScreenOn) {
       if (wasAnimatingWhenNotShown) {
         resumeAnimation();
         wasAnimatingWhenNotShown = false;
       }
     } else {
-      if (isAnimating()) {
+      if (isAnimating() && !mScreenOn) {
         pauseAnimation();
         wasAnimatingWhenNotShown = true;
       }
@@ -317,11 +321,15 @@ import static com.airbnb.lottie.RenderMode.HARDWARE;
 
   @Override protected void onAttachedToWindow() {
     super.onAttachedToWindow();
-    if (autoPlay || wasAnimatingWhenDetached) {
-      playAnimation();
-      // Autoplay from xml should only apply once.
-      autoPlay = false;
-      wasAnimatingWhenDetached = false;
+    IntentFilter filter = new IntentFilter(Intent.ACTION_SCREEN_OFF);
+    filter.addAction(Intent.ACTION_SCREEN_ON);
+    getContext().registerReceiver(mIntentReceiver, filter);
+
+    if (autoPlay || wasAnimatingWhenDetached || mScreenOn) {
+        playAnimation();
+        // Autoplay from xml should only apply once.
+        autoPlay = false;
+        wasAnimatingWhenDetached = false;
     }
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
       // This is needed to mimic newer platform behavior.
@@ -330,11 +338,25 @@ import static com.airbnb.lottie.RenderMode.HARDWARE;
     }
   }
 
+    private final BroadcastReceiver mIntentReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            String action = intent.getAction();
+            if (action == null) return;
+            if (action.equals(Intent.ACTION_SCREEN_ON)) {
+                mScreenOn = true;
+            } else if (action.equals(Intent.ACTION_SCREEN_OFF)) {
+                mScreenOn = false;
+            }
+        }
+    };
+
   @Override protected void onDetachedFromWindow() {
-    if (isAnimating()) {
+    if (isAnimating() || !mScreenOn ) {
       cancelAnimation();
       wasAnimatingWhenDetached = true;
     }
+    getContext().unregisterReceiver(mIntentReceiver);
     super.onDetachedFromWindow();
   }
 
